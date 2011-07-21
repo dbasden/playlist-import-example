@@ -2,11 +2,19 @@
 
 '''Simple importer of loved tracks from last.fm to a Rdio playlist
 
-This glue code written by David Basden
+This glue code by David Basden
 '''
 
 import json
 import urllib
+import sys
+import logging
+from playlistcreator import PlaylistCreator
+
+logging.basicConfig(level=logging.ERROR)
+
+PLAYLIST_NAME =		'Last Heard'
+PLAYLIST_DESCRIPTION =	'Loved tracks from last.fm'
 
 class LastFmLink(object):
 	def __init__(self, apikey, apiurl='http://ws.audioscrobbler.com/2.0/'):
@@ -26,18 +34,31 @@ class LastFmLink(object):
 		'''yield 2tuples of loved tracks as (artist, title)
 		Much more data is exposed by the API, but we don't use it
 		'''
+		page = 1
 		while True:
 			d = self.api_call('user.getlovedtracks', user=user, page=page, limit=limit)
 			for track in d['lovedtracks']['track']:
 				yield (track['artist']['name'], track['name'])
 
-			attr = d['lovedtracks']['@attr']
-			if int(attr['page']) >= int(attr['totalPages']):
+			if page == 1:
+				totalPages = int(d['lovedtracks']['@attr']['totalPages'])
+			if page >= totalPages:
 				break
-
+			page += 1
 
 if __name__ == "__main__":
+	if len(sys.argv) < 2:
+		print >> sys.stderr, sys.argv[0],'<lastfm username>'
+		exit(1)
+	username = sys.argv[1]
+
 	lastfm = LastFmLink('1db991b8f9e0b37d79aea6191b4d5cc7')
-	for artist,title in lastfm.get_loved_tracks('notarealbear'):
-		print title,'by',artist
-	
+	rdio = PlaylistCreator()
+	if not rdio.authenticated:
+		print "You need to authenticate to Rdio. Run ./authenticate.py then try again"
+		sys.exit(1)
+
+	print "Getting loved tracks for %s from last.fm" %(username,)
+	tracks = list(lastfm.get_loved_tracks(username))
+	print "Putting them into playlist '%s' on your Rdio account" % (PLAYLIST_NAME,)
+	rdio.make_playlist(PLAYLIST_NAME, PLAYLIST_DESCRIPTION, tracks)
